@@ -1,0 +1,81 @@
+api_key="Your aspi key"
+from crewai import Crew, Agent, Task, Process, LLM
+from crewai_tools import FileReadTool
+
+
+llm = LLM(  
+    model="gemini/gemini-2.5-flash",
+    google_api_key=api_key
+)
+
+read_csv_tool = FileReadTool(file_path=r"C:\Users\saura\OneDrive\Desktop\Synthetic_Financial_datasets_log.csv")
+
+data_collector = Agent(
+    role="Data Collector",
+    goal="Load and profile the dataset using pandas, not by hallucinating.",
+    backstory="You are responsible for loading and summarizing the real dataset from a CSV file.",
+    tools=[read_csv_tool],
+    verbose=True,
+    reasoning=True,
+    # memory=True,
+    llm=llm 
+)
+
+pattern_recognizer = Agent(
+    role="Pattern Recognizer",
+    goal="Detect suspicious transactions using the actual dataset.",
+    backstory="You analyze high-value amounts, suspicious transaction types (TRANSFER, CASH_OUT), and balance inconsistencies.",
+    tools=[read_csv_tool],
+    verbose=True,
+    reasoning=True,
+    # memory=True,
+    llm=llm
+)
+
+reporter = Agent(
+    role="Fraud Reporter",
+    goal="Generate a fraud detection report summarizing anomalies.",
+    backstory="You prepare professional reports based on the actual dataset findings.",
+    verbose=True,
+    reasoning=True,
+    # memory=True,
+    llm=llm 
+)
+
+load_task = Task(
+    description=(
+        "Use FileReadTool to analyze anomalies in batches of 500 rows at a time "
+        "from the dataset. Focus on suspicious transaction types (TRANSFER, CASH_OUT), "
+        "very large amounts, and balance inconsistencies. Summarize anomalies with row indices and amounts."
+    ),
+    agent=data_collector,
+    expected_output="Dataset profile with row count, column names, dtypes, missing values, and 5 real sample rows."
+)
+
+detect_task = Task(
+    description=(
+        "Analyze the loaded dataset to identify anomalies: "
+        "very high transaction amounts, suspicious types (TRANSFER, CASH_OUT), "
+        "and balance inconsistencies. Provide examples with row indices."
+    ),
+    agent=pattern_recognizer,
+    expected_output="A list of detected anomalies with explanations."
+)
+
+report_task = Task(
+    description="Prepare a structured fraud detection report summarizing anomalies and recommendations.",
+    agent=reporter,
+    expected_output="Fraud detection report (executive summary + findings + recommendations)."
+)
+
+crew = Crew(
+    agents=[data_collector, pattern_recognizer, reporter],
+    tasks=[load_task, detect_task, report_task],
+    verbose=True,
+    planning=False,
+    process=Process.sequential
+)
+
+result = crew.kickoff()
+print("\n=== Final Fraud Report ===\n")
+print(result)
